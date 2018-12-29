@@ -103,7 +103,7 @@ public class MobizonApi {
         }
         this.timeout = timeout;
 
-        if (apiVersion.substring(0, 1).equals("v") || (int) apiVersion.charAt(apiVersion.length() - 1) < 1) {
+        if (!apiVersion.substring(0, 1).equals("v") || Character.getNumericValue(apiVersion.charAt(apiVersion.length() - 1)) < 1) {
             throw new IllegalArgumentException("Incorrect api version");
         }
         this.apiVersion = apiVersion;
@@ -111,7 +111,9 @@ public class MobizonApi {
             throw new IllegalArgumentException("Incorrect api response format");
         }
         this.format = format;
-        this.skipVerifySSL = skipVerifySSL;
+        if (!forceHTTP) {
+            this.skipVerifySSL = skipVerifySSL;
+        }
         this.forceHTTP = forceHTTP;
     }
 
@@ -285,7 +287,7 @@ public class MobizonApi {
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
         builder.readTimeout(timeout, TimeUnit.SECONDS);
         if (skipVerifySSL) {
-            OkHttpUnsecureBuilder.configureToIgnoreCertificate(builder);
+            builder = OkHttpUnsecureBuilder.configureToIgnoreCertificate(builder);
         }
         okHttpClient = builder.build();
         return okHttpClient;
