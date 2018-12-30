@@ -2,21 +2,22 @@ package ua.mobizon;
 
 import okhttp3.*;
 import ua.mobizon.exception.MobizonException;
+import ua.mobizon.params.CreateCampaignParams;
+import ua.mobizon.params.CreateLinkParams;
+import ua.mobizon.params.SMSMessageParams;
 import ua.mobizon.utils.OkHttpUnsecureBuilder;
 
 import java.io.IOException;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
+import java.text.Format;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 public class MobizonApi {
-
     /**
      * String HTTP(S) API server address. api.mobizon.com is deprecated and will be disabled soon.
      * Default value will be removed soon. Only OLD keys will be accepted by this endpoint till it's final shutdown.
@@ -63,12 +64,6 @@ public class MobizonApi {
     private static final String[] allowedFormats = {"xml", "json"};
 
     /**
-     * Allowed SMS message params
-     */
-    private static final String[] allowedSMSMessageParams = {"name", "deferredToTs", "mclass", "validity"};
-
-
-    /**
      * @param apiKey    User API key. API key should be passed either as first string param or as apiKey in params.
      * @param apiServer User API server depends on user initial registration site. Correct API domain could be found in 'API connection setup guide'
      * @throws IllegalArgumentException
@@ -97,12 +92,10 @@ public class MobizonApi {
      */
     public MobizonApi(String apiKey, String apiServer, String format, int timeout, String apiVersion, boolean skipVerifySSL, boolean forceHTTP) {
         this(apiKey, apiServer);
-
         if (timeout < 0) {
             throw new IllegalArgumentException("Timeout can not be less than 0");
         }
         this.timeout = timeout;
-
         if (!apiVersion.substring(0, 1).equals("v") || Character.getNumericValue(apiVersion.charAt(apiVersion.length() - 1)) < 1) {
             throw new IllegalArgumentException("Incorrect api version");
         }
@@ -140,19 +133,51 @@ public class MobizonApi {
     }
 
     /**
-     * @param txtMessage  Text message to recipient.
-     * @param phoneNumber Phone number of recipient
      * @throws MobizonException
      */
-    public String sendSMSMessage(String txtMessage, String phoneNumber) throws MobizonException {
-        URL sendSMSMessageURL = getAPIURL("service/message/sendsmsmessage");
+    public String getSMSMessageById(int messageId) throws MobizonException {
+        URL getSMSMessageURL = getAPIURL("service/message/list");
         RequestBody formBody = null;
         try {
             formBody = new FormBody.Builder()
-                    .add("recipient", getValidPhoneNumber(phoneNumber))
-                    .add("text", URLEncoder.encode(txtMessage, "UTF-8"))
+                    .add("criteria[id]", String.valueOf(messageId))
+                    .add("withNumberInfo", "1")
                     .build();
-            return sendAndGetAPIResponse(sendSMSMessageURL.toString(), formBody);
+            return sendAndGetAPIResponse(getSMSMessageURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    /**
+     * @throws MobizonException
+     */
+    public String getSMSMessagesByCampaignId(int campaignId) throws MobizonException {
+        URL getSMSMessageURL = getAPIURL("service/message/list");
+        RequestBody formBody = null;
+        try {
+            formBody = new FormBody.Builder()
+                    .add("criteria[campaignId]", String.valueOf(campaignId))
+                    .add("withNumberInfo", "1")
+                    .build();
+            return sendAndGetAPIResponse(getSMSMessageURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    /**
+     * @throws MobizonException
+     */
+    public String getSMSMessagesByPhoneNumber(long phoneNumber) throws MobizonException {
+        URL getSMSMessageURL = getAPIURL("service/message/list");
+        RequestBody formBody = null;
+        try {
+            formBody = new FormBody.Builder()
+                    .add("criteria[to]", String.valueOf(phoneNumber))
+                    .add("withNumberInfo", "1")
+                    .build();
+            return sendAndGetAPIResponse(getSMSMessageURL.toString(), formBody);
         } catch (Exception e) {
             throw new MobizonException(e);
         }
@@ -161,22 +186,61 @@ public class MobizonApi {
     /**
      * @param txtMessage  Text message to recipient.
      * @param phoneNumber Phone number of recipient
-     * @param params Extra SMS params
      * @throws MobizonException
      */
-    public String sendSMSMessage(String txtMessage, String phoneNumber, HashMap<String, String> params) throws MobizonException {
+    public String sendSMSMessage(String txtMessage, String phoneNumber) throws MobizonException {
+        return this.sendSMSMessage(txtMessage, phoneNumber, new SMSMessageParams());
+    }
+
+    /**
+     * @param txtMessage  Text message to recipient.
+     * @param phoneNumber Phone number of recipient
+     * @param params      Extra SMS params
+     * @throws MobizonException
+     */
+    public String sendSMSMessage(String txtMessage, String phoneNumber, SMSMessageParams params) throws MobizonException {
         URL sendSMSMessageURL = getAPIURL("service/message/sendsmsmessage");
         FormBody.Builder formBuilder = new FormBody.Builder();
         try {
-            formBuilder.add("text", URLEncoder.encode(txtMessage, "UTF-8"));
+            formBuilder.add("text", txtMessage);
             formBuilder.add("recipient", getValidPhoneNumber(phoneNumber));
-            Iterator it = params.entrySet().iterator();
-            while (it.hasNext()) {
-                Map.Entry pair = (Map.Entry) it.next();
-                if (Arrays.asList(allowedSMSMessageParams).contains(pair.getKey())) {
-                    formBuilder.add("params[" + pair.getKey() + "]", pair.getValue().toString());
-                }
+            if (!(params.getName().isEmpty())) {
+                formBuilder.add("params[name]", params.getName());
             }
+            if (!(params.getDeferredToTs().isEmpty())) {
+                formBuilder.add("params[deferredToTs]", params.getDeferredToTs());
+            }
+            formBuilder.add("params[mclass]", String.valueOf(params.getMclass()));
+            formBuilder.add("params[validity]", String.valueOf(params.getValidity()));
+            RequestBody formBody = formBuilder.build();
+            return sendAndGetAPIResponse(sendSMSMessageURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    /**
+     * @param txtMessage  Text message to recipient
+     * @param phoneNumber Phone number of recipient
+     * @param alphaname   Registered alphaname
+     * @param params Extra SMS params
+     * @throws MobizonException
+     */
+    public String sendSMSMessage(String txtMessage, String phoneNumber, String alphaname, SMSMessageParams params) throws MobizonException {
+        URL sendSMSMessageURL = getAPIURL("service/message/sendsmsmessage");
+        FormBody.Builder formBuilder = new FormBody.Builder();
+        try {
+            formBuilder.add("recipient", getValidPhoneNumber(phoneNumber));
+            formBuilder.add("from", alphaname);
+            formBuilder.add("text", txtMessage);
+            if (!(params.getName().isEmpty())) {
+                formBuilder.add("params[name]", params.getName());
+            }
+            if (!(params.getDeferredToTs().isEmpty())) {
+                formBuilder.add("params[deferredToTs]", params.getDeferredToTs());
+            }
+            formBuilder.add("params[mclass]", String.valueOf(params.getMclass()));
+            formBuilder.add("params[validity]", String.valueOf(params.getValidity()));
             RequestBody formBody = formBuilder.build();
             return sendAndGetAPIResponse(sendSMSMessageURL.toString(), formBody);
         } catch (Exception e) {
@@ -191,17 +255,7 @@ public class MobizonApi {
      * @throws MobizonException
      */
     public String sendSMSMessage(String txtMessage, String phoneNumber, String alphaname) throws MobizonException {
-        URL sendSMSMessageURL = getAPIURL("service/message/sendsmsmessage");
-        try {
-            RequestBody formBody = new FormBody.Builder()
-                    .add("recipient", getValidPhoneNumber(phoneNumber))
-                    .add("from", alphaname)
-                    .add("text", URLEncoder.encode(txtMessage, "UTF-8"))
-                    .build();
-            return sendAndGetAPIResponse(sendSMSMessageURL.toString(), formBody);
-        } catch (Exception e) {
-            throw new MobizonException(e);
-        }
+        return this.sendSMSMessage(txtMessage, phoneNumber, alphaname, new SMSMessageParams());
     }
 
     /**
@@ -209,25 +263,15 @@ public class MobizonApi {
      * @throws MobizonException
      */
     public String getSMSStatus(int messageId) throws MobizonException {
-        if (messageId <= 0) {
-            throw new IllegalArgumentException("Incorrect messageId number");
-        }
-        URL getSMSStatusURL = getAPIURL("service/message/getSMSStatus");
-        try {
-            RequestBody formBody = new FormBody.Builder()
-                    .add("ids", String.valueOf(messageId))
-                    .build();
-            return sendAndGetAPIResponse(getSMSStatusURL.toString(), formBody);
-        } catch (Exception e) {
-            throw new MobizonException(e);
-        }
+        int[] message = {messageId};
+        return this.getSMSStatus(message);
     }
 
     public String getSMSStatus(int[] messageId) throws MobizonException {
         if (messageId.length == 0 || messageId.length > 100) {
             throw new IllegalArgumentException("Incorrect size of messageId array");
         }
-        URL getSMSStatusURL = getAPIURL("service/message/getSMSStatus");
+        URL getSMSStatusURL = getAPIURL("service/message/getsmsstatus");
         FormBody.Builder formBuilder = new FormBody.Builder();
         StringBuilder sb = new StringBuilder();
         for (int id : messageId) {
@@ -243,17 +287,207 @@ public class MobizonApi {
         }
     }
 
+    public String createCampaign(CreateCampaignParams params) throws MobizonException {
+        URL createCampaignURL = getAPIURL("service/campaign/create");
+        FormBody.Builder formBuilder = new FormBody.Builder();
+        formBuilder.add("data[name]", params.getName());
+        formBuilder.add("data[text]", params.getText());
+        formBuilder.add("data[type]", String.valueOf(params.getType()));
+        if (!params.getFrom().isEmpty()) formBuilder.add("data[from]", params.getFrom());
+        if (params.getRateLimit() != 0) formBuilder.add("data[rateLimit]", String.valueOf(params.getRateLimit()));
+        if (params.getRatePeriod() != 0) formBuilder.add("data[ratePeriod]", String.valueOf(params.getRatePeriod()));
+        if (!params.getDeferredToTs().isEmpty()) formBuilder.add("data[deferredToTs]", params.getDeferredToTs());
+        // does not work
+        //formBuilder.add("data[mclass]", String.valueOf(params.getMclass()));
+        if (params.getTtl() != 0) formBuilder.add("data[ttl]", String.valueOf(params.getTtl()));
+        // does not work either
+        //formBuilder.add("data[trackShortLinkRecipients]", String.valueOf(params.getTrackShortLinkRecipients()));
+        RequestBody formBody = formBuilder.build();
+        try {
+            return sendAndGetAPIResponse(createCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String addCampaignRecipient(int campaignId, long phoneNumber) throws MobizonException {
+        URL deleteCampaignURL = getAPIURL("service/campaign/addrecipients");
+        RequestBody formBody = new FormBody.Builder()
+                .add("id", String.valueOf(campaignId))
+                .add("recipients", String.valueOf(phoneNumber))
+                .build();
+        try {
+            return sendAndGetAPIResponse(deleteCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String addCampaignRecipients(int campaignId, long[] phoneNumbers) throws MobizonException {
+        if (phoneNumbers.length > 500) {
+            throw new IllegalArgumentException("Too many phone numbers");
+        }
+        URL deleteCampaignURL = getAPIURL("service/campaign/addrecipients");
+        FormBody.Builder formBuilder = new FormBody.Builder();
+        formBuilder.add("id", String.valueOf(campaignId));
+        StringBuilder sb = new StringBuilder();
+        for (long number : phoneNumbers) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(String.valueOf(number));
+        }
+        formBuilder.add("recipients", sb.toString());
+        RequestBody formBody = formBuilder.build();
+        try {
+            return sendAndGetAPIResponse(deleteCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String deleteCampaign(int campaignId) throws MobizonException {
+        URL deleteCampaignURL = getAPIURL("service/campaign/delete");
+        RequestBody formBody = new FormBody.Builder()
+                .add("id", String.valueOf(campaignId))
+                .build();
+        try {
+            return sendAndGetAPIResponse(deleteCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String getCampaign(int campaignId) throws MobizonException {
+        URL getCampaignURL = getAPIURL("service/campaign/get");
+        RequestBody formBody = new FormBody.Builder()
+                .add("id", String.valueOf(campaignId))
+                .build();
+        try {
+            return sendAndGetAPIResponse(getCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String getCampaignLinks(int campaignId) throws MobizonException {
+        URL getCampaignLinksURL = getAPIURL("service/campaign/getlinks");
+        RequestBody formBody = new FormBody.Builder()
+                .add("campaignId", String.valueOf(campaignId))
+                .build();
+        try {
+            return sendAndGetAPIResponse(getCampaignLinksURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String getCampaignInfo(int campaignId) throws MobizonException {
+        URL getCampaignInfoURL = getAPIURL("service/campaign/getinfo");
+        RequestBody formBody = new FormBody.Builder()
+                .add("id", String.valueOf(campaignId))
+                .build();
+        try {
+            return sendAndGetAPIResponse(getCampaignInfoURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String startCampaign(int campaignId) throws MobizonException {
+        URL getStartCampaignURL = getAPIURL("service/campaign/send");
+        RequestBody formBody = new FormBody.Builder()
+                .add("id", String.valueOf(campaignId))
+                .build();
+        try {
+            return sendAndGetAPIResponse(getStartCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String createLink(CreateLinkParams params) throws MobizonException {
+        URL getStartCampaignURL = getAPIURL("service/link/create");
+        FormBody.Builder formBuilder = new FormBody.Builder();
+        if (!params.getFullLink().isEmpty()) formBuilder.add("data[fullLink]", params.getFullLink());
+        if (params.getStatus() != 1) formBuilder.add("data[status]", String.valueOf(params.getStatus()));
+        if (params.getExpirationDate().after(new Date(0))) {
+            Format formatter = new SimpleDateFormat("yyyy-MM-dd");
+            String expirationDate = formatter.format(params.getExpirationDate());
+            formBuilder.add("data[expirationDate]", expirationDate);
+        }
+        if (!params.getComment().isEmpty()) formBuilder.add("data[comment]", params.getComment());
+        RequestBody formBody = formBuilder.build();
+        try {
+            return sendAndGetAPIResponse(getStartCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String getLinkById(int linkId) throws MobizonException {
+        URL getStartCampaignURL = getAPIURL("service/link/get");
+        RequestBody formBody = new FormBody.Builder()
+                .add("id", String.valueOf(linkId))
+                .build();
+        try {
+            return sendAndGetAPIResponse(getStartCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    public String deleteLinkById(int linkId) throws MobizonException {
+        URL getStartCampaignURL = getAPIURL("service/link/delete");
+        RequestBody formBody = new FormBody.Builder()
+                .add("ids[0]", String.valueOf(linkId))
+                .build();
+        try {
+            return sendAndGetAPIResponse(getStartCampaignURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
+    /**
+     * @param taskId Background task id
+     * @throws MobizonException
+     */
+    public String getTaskQueueStatus(int taskId) throws MobizonException {
+        if (taskId <= 0) {
+            throw new IllegalArgumentException("Incorrect taskId identifier");
+        }
+        URL getTaskQueueStatusURL = getAPIURL("service/taskqueue/getstatus");
+        try {
+            RequestBody formBody = new FormBody.Builder()
+                    .add("id", String.valueOf(taskId))
+                    .build();
+            return sendAndGetAPIResponse(getTaskQueueStatusURL.toString(), formBody);
+        } catch (Exception e) {
+            throw new MobizonException(e);
+        }
+    }
+
     private String sendAndGetAPIResponse(String url) throws KeyManagementException, NoSuchAlgorithmException, IOException {
         OkHttpClient okHttpClient = getOkHttpClient();
-        Request request = new Request.Builder().url(url).build();
+        Request request = new Request.Builder()
+                .url(url)
+                .build();
         Response response = okHttpClient.newCall(request).execute();
+        if (!response.isSuccessful())
+            throw new IOException("Unexpected response " + response);
         return response.body().string();
     }
 
     private String sendAndGetAPIResponse(String url, RequestBody requestBody) throws KeyManagementException, NoSuchAlgorithmException, IOException {
         OkHttpClient okHttpClient = getOkHttpClient();
-        Request request = new Request.Builder().url(url).post(requestBody).build();
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("content-type", "application/x-www-form-urlencoded")
+                .addHeader("cache-control", "no-cache")
+                .post(requestBody)
+                .build();
         Response response = okHttpClient.newCall(request).execute();
+        if (!response.isSuccessful())
+            throw new IOException("Unexpected response " + response);
         return response.body().string();
     }
 

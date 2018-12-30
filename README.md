@@ -4,10 +4,11 @@ MobizonAPI is a Java client for Mobizon services, which gives you an easy integr
 
 [API Documentation] (https://mobizon.ua/integration/api)
 
-## TODO
+## Usage
 
-1. Add SMS Campaign support
-2. Add Link module support
+MobizonApi api = new MobizonApi("token", "api.mobizon.ua");
+System.out.println(api.getOwnBalance());
+System.out.println(api.sendSMSMessage("Hello from the other side", "380671234567"));
 
 ## Open source agreement
 
